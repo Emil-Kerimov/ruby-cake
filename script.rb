@@ -1,66 +1,119 @@
-# frozen_string_literal: true
+def split_cake(input)
+  # Розбиваємо вхідний текстовий пиріг на масив символів
+  cake = input.split("\n").map { |row| row.chars }
+
+  # Знаходимо координати всіх ізюминок у пирозі
+  raisins = find_raisins(cake)
+
+  # Перевіряємо, чи кількість ізюму відповідає умові
+  if raisins.size <= 1 || raisins.size > 10
+    puts "кількість ізюму виходить за межі умови (1-10)"
+    return
+  end
+
+  # Загальна кількість точок пирога
+  total_size = cake.size * cake[0].size
+  piece_size = total_size / raisins.size
+
+  # Мітки для відслідковування прив'язаних до шматка точок пирога (двом. масив)
+  belongs = Array.new(cake.size) { Array.new(cake[0].size, false) }
+
+  pieces = []
+
+  # Проходимо по кожному ізюму і шукаємо шматок, до якого він належить
+  raisins.each do |(x, y)|
+    piece = find_piece(x, y, cake, piece_size, belongs)
+    if piece
+      pieces << piece
+    end
+  end
+
+  if pieces.size != raisins.size
+    puts "неможливо розділити"
+    return
+  end
+
+  puts "розділені шматки пирога:"
+  pieces.each { |piece| print_piece(piece) }
+end
 
 def find_raisins(cake)
+  # Повертає координати всіх ізюминок у вигляді масиву [x, y]
   raisins = []
-  cake.each_with_index do |row, y|
-    row.chars.each_with_index do |cell, x|
-      raisins << [x, y] if cell == 'o'
+  cake.each_with_index do |row, x|
+    row.each_with_index do |p, y|
+      raisins << [x, y] if p == "o"
     end
   end
   raisins
 end
 
-def one_raisin?(slice)
-  raisins = slice.flat_map.with_index { |row, y| row.chars.map.with_index { |cell, x| [x, y] if cell == 'o' }.compact }
-  raisins.size == 1
+# знаходимо шматок пирога, що містить ізюм з коорд x,y та має заданий розмір, перебираємо всі можливі
+# варіанти розмірів та положень шматків пирога, щоб знайти правильний шматок
+def find_piece(x, y, cake, piece_size, belongs)
+  # Перебираємо всі можливі висоти і ширини шматка(усі можливі варіанти розмірів шматків)
+  (1..cake.size).each do |height|
+    (1..cake[0].size).each do |width|
+      # Пропускаємо, якщо розмір шматка не відповідає потрібному
+      next unless width * height == piece_size
+
+      # Перевіряємо всі можливі верхні ліві кути шматка(поч. точки т.к. координати)
+      (0..(cake.size - height)).each do |start_x|
+        # Пропускаємо, якщо ізюм не входить у висоту шматка
+        next unless (start_x...(start_x + height)).include?(x)
+
+        (0..(cake[0].size - width)).each do |start_y|
+          # Пропускаємо, якщо ізюм не входить у ширину шматка
+          next unless (start_y...(start_y + width)).include?(y)
+
+          # Перевіряємо, чи доступний цей шматок
+          if available_piece?(start_x, start_y, width, height, cake, belongs)
+            # Позначаємо шматок як зайнятий і повертаємо його
+            write_belongs(start_x, start_y, width, height, belongs)
+            return get_piece(start_x, start_y, width, height, cake)
+          end
+        end
+      end
+    end
+  end
+  nil
 end
 
-def slice(cake, raisins)
-  rows, cols = cake.size, cake[0].size
-  slices = []
+def available_piece?(start_x, start_y, width, height, cake, belongs)
+  count_raisins = 0
 
-  (1...rows).each do |i|
-    upper_slice = cake[0...i]
-    lower_slice = cake[i...rows]
-    slices << [upper_slice, lower_slice] if one_raisin?(upper_slice) && one_raisin?(lower_slice)
-  end
+  # Перевіряємо всі клітини у заданому прямокутнику
+  (start_x...(start_x + height)).each do |i|
+    (start_y...(start_y + width)).each do |j|
+      # Якщо клітина вже зайнята, шматок недоступний
+      return false if belongs[i][j]
 
-  (1...cols).each do |j|
-    left_slice = cake.map { |row| row[0...j] }
-    right_slice = cake.map { |row| row[j...cols] }
-    slices << [left_slice, right_slice] if one_raisin?(left_slice) && one_raisin?(right_slice)
-  end
-
-  slices
-end
-
-def find_best(cake)
-  raisins = find_raisins(cake)
-  best_slices = nil
-
-  slice(cake, raisins).each do |slices|
-    if best_slices.nil? || slices.first[0].size > best_slices.first[0].size
-      best_slices = slices
+      # Рахуємо кількість ізюмів у шматку
+      count_raisins += 1 if cake[i][j] == "o"
     end
   end
 
-  best_slices
+  # вважається доступним, якщо тільки один ізюм
+  count_raisins == 1
 end
 
-cake = %w[
-  ........
-  ..o.....
-  ...o....
-  ........
-]
-
-result = find_best(cake)
-if result
-  result.each_with_index do |slice, i|
-    puts "Шматок #{i + 1}:"
-    slice.each { |row| puts row }
-    puts "----------"
+def write_belongs(start_x, start_y, width, height, belongs)
+  # Позначаємо всі клітини шматка як прив'язані до шматка
+  (start_x...(start_x + height)).each do |i|
+    (start_y...(start_y + width)).each do |j|
+      belongs[i][j] = true
+    end
   end
-else
-  puts "Помилка, неможливо знайти"
+end
+
+def get_piece(start_x, start_y, width, height, cake)
+  # отримуємо шматок із пирога (матриці)
+  (start_x...(start_x + height)).map do |i|
+    cake[i][start_y...(start_y + width)]
+  end
+end
+
+def print_piece(piece)
+  piece.each { |row| puts row.join }
+  puts ",\n"
 end
